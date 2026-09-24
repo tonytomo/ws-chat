@@ -5,22 +5,42 @@
        Configuration from URL params
        ============================================================
        ?key=<API_KEY>        (required)  API key
-       ?room=<name>          (optional)  room to join/create, default "lobby"
-       ?passcode=<string>    (optional)  passcode for protected rooms
        ?ws=<url>             (optional)  override the WebSocket endpoint
-       ?kind=<chat|game|custom> (optional) kind used if the room must be created
        ============================================================ */
 
+    const API_KEY = window.Config.apiKey;
+    const WS_OVERRIDE = window.Config.wsOverride;
+
     const params = new URLSearchParams(location.search);
-    const API_KEY = (params.get('key') || params.get('apikey') || '').trim();
-    const ROOM = (params.get('room') || 'lobby').trim();
-    const PASSCODE = params.get('passcode') || '';
-    const WS_OVERRIDE = (params.get('ws') || '').trim();
-    const ROOM_KIND = (params.get('kind') || 'chat').trim();
+
+    // Prefer URL params (shareable), fall back to the session handoff from the lobby.
+    let pending = null;
+    try { pending = JSON.parse(sessionStorage.getItem('ws.pendingRoom') || 'null'); } catch { }
+
+    const ROOM = (params.get('room') || pending?.room || '').trim();
+    const PASSCODE = (params.get('passcode') || pending?.passcode || '');
+    const ROOM_KIND = (params.get('kind') || pending?.kind || 'chat').trim();
+
+    // One-shot: clear it so a later refresh doesn't silently re-join.
+    sessionStorage.removeItem('ws.pendingRoom');
+
+    if (!ROOM) {
+        setStatus('error', 'No room');
+        showBanner('error', 'No room specified. Pick one from the lobby.', false);
+        lockComposer();
+        return;
+    }
 
     const ROOM_RE = /^[a-zA-Z0-9_-]{1,64}$/;
     const HEARTBEAT_MS = 25_000;
     const PONG_TIMEOUT_MS = 10_000;
+
+    if (!ROOM) {
+        setStatus('error', 'No room');
+        showBanner('error', 'No room specified. Pick one from the lobby.', false);
+        lockComposer();
+        return;
+    }
 
     /* ---------- DOM ---------- */
     const $ = (id) => document.getElementById(id);
@@ -55,6 +75,7 @@
     let pongTimer = null;
     let bannerTimer = null;
     let closedByUs = false;
+    let sawWelcome = false;   // set to true in onWelcome()
 
     /* ============================================================
        Boot / validation
@@ -93,6 +114,7 @@
 
     function connect() {
         closedByUs = false;
+        sawWelcome = false
         pendingJoin = false;
         creatingRoom = false;
 

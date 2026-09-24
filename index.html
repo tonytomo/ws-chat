@@ -1,20 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Chat</title>
-  <link rel="stylesheet" href="styles.css" />
+  <title>Lobby</title>
+  <link rel="stylesheet" href="lobby.css" />
 </head>
+
 <body>
   <div class="app">
     <header class="topbar">
-      <div class="room">
-        <span class="hash">#</span>
-        <h1 id="room-name">lobby</h1>
+      <div class="brand">
+        <h1>Lobby</h1>
+        <span id="user-label" class="label"></span>
       </div>
       <div class="meta">
-        <span id="member-count" class="pill">0 online</span>
+        <span id="room-count" class="pill">0 rooms</span>
         <span id="status" class="status status--connecting">
           <i class="dot"></i>
           <span id="status-text">Connecting…</span>
@@ -22,24 +24,71 @@
       </div>
     </header>
 
-    <main id="messages" class="messages" aria-live="polite" aria-label="Messages"></main>
+    <div class="toolbar">
+      <input id="filter" class="filter" type="search" placeholder="Filter rooms…" aria-label="Filter rooms" />
+      <button id="refresh" class="btn btn--ghost" type="button" title="Refresh">↻</button>
+      <button id="create-open" class="btn btn--primary" type="button">+ Create room</button>
+    </div>
 
     <div id="banner" class="banner" role="alert" hidden></div>
 
-    <form id="composer" class="composer" autocomplete="off">
-      <input
-        id="input"
-        class="input"
-        type="text"
-        maxlength="2000"
-        placeholder="Message"
-        aria-label="Message"
-        disabled
-      />
-      <button id="send" class="send" type="submit" disabled>Send</button>
-    </form>
+    <main id="rooms" class="rooms" aria-live="polite" aria-label="Rooms"></main>
+
+    <footer class="footer">
+      <span id="last-updated" class="muted"></span>
+    </footer>
   </div>
 
-  <script src="app.js"></script>
+  <dialog id="create-dialog" class="dialog">
+    <form id="create-form" class="dialog__form" novalidate>
+      <header class="dialog__head">
+        <h2>Create a room</h2>
+        <button type="button" class="dialog__x" data-close aria-label="Close">×</button>
+      </header>
+
+      <label class="field">
+        <span>Room name</span>
+        <input id="cr-name" type="text" required maxlength="64" autocomplete="off" placeholder="e.g. arena-1" />
+        <small>1–64 chars from <code>a–z A–Z 0–9 _ -</code></small>
+      </label>
+
+      <label class="field">
+        <span>Kind</span>
+        <select id="cr-kind">
+          <option value="chat">Chat — long-lived, 500 members</option>
+          <option value="game">Game — ephemeral, 16 members</option>
+          <option value="custom">Custom — ephemeral, 64 members</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Passcode <em>(optional)</em></span>
+        <input id="cr-passcode" type="password" autocomplete="new-password" placeholder="Leave blank for public" />
+      </label>
+
+      <div class="grid-2">
+        <label class="field">
+          <span>Max members <em>(optional)</em></span>
+          <input id="cr-max" type="number" min="1" step="1" placeholder="Preset default" />
+        </label>
+
+        <label class="checkbox field">
+          <input id="cr-ephemeral" type="checkbox" />
+          <span>Ephemeral<br /><small>Delete when empty</small></span>
+        </label>
+      </div>
+
+      <div id="cr-error" class="dialog__error" hidden></div>
+
+      <div class="dialog__actions">
+        <button type="button" class="btn btn--ghost" data-close>Cancel</button>
+        <button id="cr-submit" type="submit" class="btn btn--primary">Create &amp; open</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="lobby.js"></script>
 </body>
+
 </html>
