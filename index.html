@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Chat</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="room">
+        <span class="hash">#</span>
+        <h1 id="room-name">lobby</h1>
+      </div>
+      <div class="meta">
+        <span id="member-count" class="pill">0 online</span>
+        <span id="status" class="status status--connecting">
+          <i class="dot"></i>
+          <span id="status-text">Connecting…</span>
+        </span>
+      </div>
+    </header>
+
+    <main id="messages" class="messages" aria-live="polite" aria-label="Messages"></main>
+
+    <div id="banner" class="banner" role="alert" hidden></div>
+
+    <form id="composer" class="composer" autocomplete="off">
+      <input
+        id="input"
+        class="input"
+        type="text"
+        maxlength="2000"
+        placeholder="Message"
+        aria-label="Message"
+        disabled
+      />
+      <button id="send" class="send" type="submit" disabled>Send</button>
+    </form>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
