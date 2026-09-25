@@ -219,12 +219,27 @@
         }
 
         // General lobby errors.
-        if (code === 'RATE_LIMITED') {
-            const wait = Number(msg.retry_after_ms) || 250;
-            showBanner('warn', `Slow down — retry in ${wait} ms.`, false, 1500);
-            return;
+        switch (code) {
+            case 'RATE_LIMITED':
+                const wait = Number(msg.retry_after_ms) || 250;
+                showBanner('warn', `Slow down — retry in ${wait} ms.`, false, 1500);
+                return;
+            case 'NOT_ROOM_OWNER':
+                showBanner(
+                    'error',
+                    text || 'Only the room creator or an admin can delete this room.',
+                    false
+                );
+                return;
+            case 'ROOM_NOT_FOUND':
+                // Only reachable from delete_room in the lobby; the room is already gone.
+                showBanner('warn', 'That room no longer exists.', true, 2000);
+                requestRooms();
+                return;
+            default:
+                showBanner('error', `${code}: ${text}`, true);
+                return;
         }
-        showBanner('error', `${code}: ${text}`, true);
     }
 
     /* ============================================================
@@ -252,10 +267,19 @@
     }
 
     function roomCard(room) {
-        const card = document.createElement('button');
-        card.type = 'button';
+        const card = document.createElement('div');
         card.className = 'room-card';
-        card.addEventListener('click', () => handleRoomClick(room));
+        card.setAttribute('role', 'button');
+        card.setAttribute('tabindex', '0');
+
+        const activate = () => handleRoomClick(room);
+        card.addEventListener('click', activate);
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                activate();
+            }
+        });
 
         const top = document.createElement('div');
         top.className = 'room-card__top';
@@ -272,6 +296,19 @@
             lock.title = 'Password protected';
             top.appendChild(lock);
         }
+
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'room-card__delete';
+        del.title = 'Delete room';
+        del.setAttribute('aria-label', `Delete room ${room.name}`);
+        del.textContent = '🗑';
+        del.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteRoom(room);
+        });
+        top.appendChild(del);
+
         card.appendChild(top);
 
         const meta = document.createElement('div');
@@ -322,6 +359,23 @@
         q.set('room', name);
         if (passcode) q.set('passcode', passcode);
         location.href = 'chat.html?' + q.toString();
+    }
+
+    function deleteRoom(room) {
+        const ok = window.confirm(
+            `Delete room "${room.name}"?\n\nAll members will be removed and the room cannot be recovered.`
+        );
+        if (!ok) return;
+
+        if (!send({ type: 'delete_room', room: room.name })) {
+            showBanner('error', 'Not connected.', false);
+            return;
+        }
+
+        // No ack comes back. Give the server a beat, then refresh the list.
+        // If the delete succeeded, the room is gone; if it failed, the
+        // NOT_ROOM_OWNER error banner appears and the room stays.
+        setTimeout(requestRooms, 400);
     }
 
     function relativeTime(unixSec) {

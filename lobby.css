@@ -285,18 +285,48 @@ code {
 .room-card:active {
   transform: translateY(0);
 }
+.room-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .room-card__top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
 .room-card__name {
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 650;
   font-size: 15px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.room-card__delete {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 3px 6px;
+  cursor: pointer;
+  opacity: 0.55;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.room-card__delete:hover {
+  opacity: 1;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
 }
 .room-card__meta {
   display: flex;

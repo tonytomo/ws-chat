@@ -54,6 +54,7 @@
         form: $('composer'),
         input: $('input'),
         send: $('send'),
+        deleteRoom: $('delete-room'),
     };
 
     els.roomName.textContent = ROOM;
@@ -69,6 +70,7 @@
 
     let pendingJoin = false;
     let creatingRoom = false;
+    let deletingRoom = false;
     let rateLimitedUntil = 0;
 
     let heartbeatTimer = null;
@@ -141,6 +143,8 @@
             stopHeartbeat();
             online = false;
             lockComposer();
+            els.deleteRoom.hidden = true;
+            els.deleteRoom.disabled = false;
 
             if (closedByUs) return;
 
@@ -241,11 +245,14 @@
         setStatus('online', 'Online');
         hideBanner();
         unlockComposer();
+        els.deleteRoom.hidden = false;
+        els.deleteRoom.disabled = false;
         startHeartbeat();
     }
 
     function onRoomLeft() {
         online = false;
+        els.deleteRoom.hidden = true;
         lockComposer();
         setStatus('connecting', 'Left room');
     }
@@ -277,10 +284,23 @@
             members = Math.max(1, members + 1);
             updateMemberCount();
             renderSystem(`${payload.who} joined`);
-        } else if (payload.event === 'leave') {
+            return;
+        }
+
+        if (payload.event === 'leave') {
             members = Math.max(1, members - 1);
             updateMemberCount();
             renderSystem(`${payload.who} left`);
+            return;
+        }
+
+        if (payload.event === 'room_deleted') {
+            // §6.1: room_deleted is broadcast to all current members, including
+            // the deleter. No separate ack is sent, so this is our success signal.
+            deletingRoom = false;
+            renderSystem('This room was deleted.');
+            leaveForLobby('Room deleted. Returning to lobby…');
+            return;
         }
     }
 
@@ -346,6 +366,13 @@
 
         switch (code) {
             case 'ROOM_NOT_FOUND':
+                // If we just asked to delete, the room is already gone — treat as success.
+                if (deletingRoom) {
+                    deletingRoom = false;
+                    leaveForLobby('Room was already deleted. Returning to lobby…');
+                    return;
+                }
+                // Otherwise, this is the join path: create the room and retry.
                 if (pendingJoin && !creatingRoom) {
                     pendingJoin = false;
                     creatingRoom = true;
@@ -353,6 +380,16 @@
                     return;
                 }
                 fail(text);
+                return;
+
+            case 'NOT_ROOM_OWNER':
+                deletingRoom = false;
+                els.deleteRoom.disabled = false;
+                showBanner(
+                    'error',
+                    text || 'Only the room creator or an admin can delete this room.',
+                    false
+                );
                 return;
 
             case 'ROOM_ALREADY_EXISTS':
@@ -399,6 +436,17 @@
         setStatus('error', 'Error');
         showBanner('error', message, true);
         lockComposer();
+    }
+
+    function leaveForLobby(message) {
+        closedByUs = true;
+        lockComposer();
+        els.deleteRoom.hidden = true;
+        showBanner('warn', message, false);
+        setTimeout(() => {
+            disconnect();
+            location.href = 'index.html';
+        }, 1200);
     }
 
     /* ============================================================
@@ -537,6 +585,31 @@
         els.input.value = '';
         els.input.focus();
     });
+
+    /* ============================================================
+       Delete room
+       ============================================================ */
+
+    els.deleteRoom.addEventListener('click', handleDeleteRoom);
+
+    function handleDeleteRoom() {
+        if (!online) return;
+
+        const ok = window.confirm(
+            `Delete room "${ROOM}"?\n\nAll members will be removed and the room cannot be recovered.`
+        );
+        if (!ok) return;
+
+        deletingRoom = true;
+        els.deleteRoom.disabled = true;
+
+        const sent = send({ type: 'delete_room', room: ROOM });
+        if (!sent) {
+            deletingRoom = false;
+            els.deleteRoom.disabled = false;
+            showBanner('error', 'Not connected.', false);
+        }
+    }
 
     // Leave the room cleanly when the tab closes.
     window.addEventListener('pagehide', () => {

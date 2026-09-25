@@ -15,10 +15,11 @@ This document defines the wire protocol for the Universal WebSocket Server. It s
   - [3.1 create_room](#31-create_room)
   - [3.2 join_room](#32-join_room)
   - [3.3 leave_room](#33-leave_room)
-  - [3.4 list_rooms](#34-list_rooms)
-  - [3.5 publish](#35-publish)
-  - [3.6 send (Deprecated)](#36-send-deprecated)
-  - [3.7 ping](#37-ping)
+  - [3.4 delete_room](#34-delete_room)
+  - [3.5 list_rooms](#35-list_rooms)
+  - [3.6 publish](#35-publish)
+  - [3.7 send (Deprecated)](#36-send-deprecated)
+  - [3.8 ping](#37-ping)
 - [4. Server → Client Messages](#4-server--client-messages)
   - [4.1 welcome](#41-welcome)
   - [4.2 room_created](#42-room_created)
@@ -77,6 +78,7 @@ If you connect with an HTTP method other than `GET`, the server immediately term
 The server extracts the API key using one of two methods:
 
 1. **Authorization Header (Standard HTTP / Server-to-Server)**:
+
    ```http
    GET /ws HTTP/1.1
    Host: localhost:8080
@@ -100,7 +102,9 @@ The server extracts the API key using one of two methods:
 The Authorization header takes precedence if both are supplied.
 
 #### Rejection on Authentication Failure (HTTP 401)
+
 If the key is missing, empty, or does not match any entry in the loaded key registry, the handshake is aborted **before** WebSocket protocol upgrade completes:
+
 - HTTP Status: `401 Unauthorized`
 - Body: `Unauthorized: invalid or missing API key`
 - The metric counter `websocket_auth_failures_total` is incremented.
@@ -120,6 +124,7 @@ Upon a successful upgrade, the server immediately and synchronously transmits a 
 ```
 
 Fields:
+
 - `type` (string): Fixed value `"welcome"`.
 - `client_id` (string): UUIDv4 assigned to this individual WebSocket connection instance.
 - `label` (string): Human-readable identity mapped to the API key from `keys.json` (e.g., `"alice"`), or `"env-key-N"` if using the legacy `API_KEYS` environment variable.
@@ -158,6 +163,7 @@ Instructs the hub to provision a new room with specific channel rules, capacity,
 ```
 
 #### Fields
+
 - `room` (string, required): Room name.
   - Length: 1–64 characters.
   - Allowed characters: `[a-zA-Z0-9_-]`.
@@ -175,10 +181,12 @@ Instructs the hub to provision a new room with specific channel rules, capacity,
 - `metadata` (arbitrary JSON, optional): Custom metadata stored on the room and exposed in `list_rooms`.
 
 #### Server Response
+
 - Success: Emits [`room_created`](#42-room_created) to the creator.
 - Triggered presence events: None. Creating a room does not join the creator to the room.
 
 #### Errors Produced
+
 - `FORBIDDEN_SCOPE`: API key lacks the `room:create` (or `room:admin`) scope.
 - `BAD_REQUEST`: Missing `room`, invalid room name syntax, invalid channel name syntax, or unparseable input.
 - `RESERVED_CHANNEL_NAME`: The `channels` object specifies `"presence"`.
@@ -204,6 +212,7 @@ Adds the client connection to an existing room and binds any declared binary cha
 ```
 
 #### Fields
+
 - `room` (string, required): Name of target room.
 - `passcode` (string, optional, default: `""`): Candidate passcode if room is password-protected.
 - `binary_channels` (object, optional): Map of channel names to 1-byte binary identifiers (`uint8`).
@@ -215,11 +224,13 @@ Adds the client connection to an existing room and binds any declared binary cha
   - Duplicate assignments within the same join message produce `BAD_REQUEST`.
 
 #### Server Response
+
 - To Joining Client: Sends [`room_joined`](#43-room_joined).
 - To Other Members: Broadcasts a server [`message`](#46-message) on the `presence` channel with event `"join"`. The joining client does **not** receive this event. If the client is the first member in the room, no presence event is emitted.
 - Re-joining: If the client is already a member of the room, binary mappings are updated, [`room_joined`](#43-room_joined) is returned, and no duplicate presence event is emitted.
 
 #### Errors Produced
+
 - `FORBIDDEN_SCOPE`: API key lacks the `room:join` (or `room:admin`) scope.
 - `BAD_REQUEST`: Missing room name, invalid binary channel ID (0), duplicate channel ID assignment, or channel does not exist in the room.
 - `ROOM_NOT_FOUND`: Target room does not exist.
@@ -243,21 +254,64 @@ Removes the client connection from an active room.
 ```
 
 #### Fields
+
 - `room` (string, required): Name of the room to leave.
 
 #### Server Response
+
 - To Leaving Client: Sends [`room_left`](#44-room_left).
 - To Remaining Members: Broadcasts a server [`message`](#46-message) on the `presence` channel with event `"leave"` if remaining member count > 0.
 - Room Cleanup: If the room is configured as `ephemeral: true` and the remaining member count drops to 0, the hub immediately deletes the room from memory.
 
 #### Errors Produced
+
 - `BAD_REQUEST`: Missing room name, or client is not currently a member of the room.
 - `ROOM_NOT_FOUND`: Room does not exist.
 - `INTERNAL_ERROR`: Internal departure failure.
 
 ---
 
-### 3.4 list_rooms
+### 3.4 delete_room
+
+Explicitly deletes an active room. The request succeeds if and only if the sender is the room's creator (sender's key label matches `CreatedBy`) or holds the `admin` scope.
+
+```json
+{
+  "type": "delete_room",
+  "room": "friends"
+}
+```
+
+#### Fields
+
+- `room` (string, required): Name of the room to delete.
+
+#### Permissions
+
+A `delete_room` request succeeds if and only if one of the following holds:
+
+1. **Room Creator**: The sender's API key label (`KeyMeta.Label`) matches the room creator's label (`CreatedBy`).
+2. **Admin Scope**: The sender's API key metadata contains the `"admin"` scope (`KeyMeta.Scopes`).
+
+Current membership is not required to delete a room: a creator can delete an abandoned room they have already left, and an admin key can delete any room without joining it.
+
+#### Server Response & Deletion Lifecycle
+
+1. The room is atomically removed from the hub's room registry. Subsequent queries (`list_rooms`), joins, and in-flight publishes to the room will immediately receive `ROOM_NOT_FOUND`.
+2. A [`room_deleted`](#6-presence) presence event (`channel: "presence"`, `from: "server"`, `payload: { "event": "room_deleted", "who": "<sender label>" }`) is broadcast over the reliable lane to all current room members, including the deleter if they are currently joined. No separate ack is sent to the deleter.
+3. Every member is cleanly removed from the room, updating hub membership and binary channel mappings. Individual `presence/leave` events are suppressed.
+4. Room resources, channel configs, and sequence counters are freed.
+
+#### Errors Produced
+
+- `BAD_REQUEST`: Missing room name.
+- `ROOM_NOT_FOUND`: Target room does not exist or has already been deleted. Connection remains open.
+- `NOT_ROOM_OWNER`: Sender is neither the room's creator nor holds the `admin` scope. Message: `"only the room creator can delete this room"`. Room is not deleted; connection remains open.
+- `INTERNAL_ERROR`: Internal deletion failure.
+
+---
+
+### 3.5 list_rooms
 
 Requests an inventory of all active rooms currently registered in the hub.
 
@@ -268,17 +322,20 @@ Requests an inventory of all active rooms currently registered in the hub.
 ```
 
 #### Fields
+
 - None.
 
 #### Server Response
+
 - Returns [`room_list`](#45-room_list).
 
 #### Errors Produced
+
 - None.
 
 ---
 
-### 3.5 publish
+### 3.6 publish
 
 Publishes a JSON payload to a specific channel within a joined room.
 
@@ -296,6 +353,7 @@ Publishes a JSON payload to a specific channel within a joined room.
 ```
 
 #### Fields
+
 - `room` (string, required): Target room name.
 - `channel` (string, optional, default: `"default"`): Destination channel name.
   - Length: 1–32 characters, regex `^[a-zA-Z0-9_-]{1,32}$`.
@@ -307,9 +365,11 @@ Publishes a JSON payload to a specific channel within a joined room.
 - `include_sender` (boolean, optional, default: `false`): When `true`, the broadcast is reflected back to the publisher. When `false`, the publisher is skipped during distribution.
 
 #### Server Response
+
 - Server wraps payload in a [`message`](#46-message) broadcast envelope, assigns a monotonic sequence number, and enqueues the message to room members.
 
 #### Errors Produced
+
 - `FORBIDDEN_SCOPE`: API key lacks the `room:join` scope.
 - `BAD_REQUEST`: Missing room name, invalid channel name syntax, or client is not a member of the room.
 - `CHANNEL_READ_ONLY`: Client attempted to publish to `"presence"`.
@@ -321,7 +381,7 @@ Publishes a JSON payload to a specific channel within a joined room.
 
 ---
 
-### 3.6 send (Deprecated)
+### 3.7 send (Deprecated)
 
 A legacy backward-compatibility alias for `publish`.
 
@@ -336,7 +396,9 @@ A legacy backward-compatibility alias for `publish`.
 ```
 
 #### Behavior & Translation
+
 When the server receives `send`:
+
 1. The server logs a warning once per connection: `client used deprecated 'send' message type; use 'publish' instead`.
 2. Translates the message into:
    - `channel`: `"default"`
@@ -347,7 +409,7 @@ When the server receives `send`:
 
 ---
 
-### 3.7 ping
+### 3.8 ping
 
 Client-initiated application-level heartbeat.
 
@@ -358,17 +420,23 @@ Client-initiated application-level heartbeat.
 ```
 
 #### Fields
+
 - None.
 
 #### Server Response
+
 - Server replies immediately with [`pong`](#48-pong).
 
 #### Errors Produced
+
 - None.
 
 ---
 
 ## 4. Server → Client Messages
+
+> [!NOTE]
+> Room deletion events (`room_deleted`) are delivered as standard `message` envelopes on the dedicated `presence` channel, rather than a top-level message type. See [§6. Presence](#6-presence) for details.
 
 ### 4.1 welcome
 
@@ -398,6 +466,7 @@ Notifies the client that room creation succeeded.
 ```
 
 #### Fields
+
 - `type` (string): Fixed value `"room_created"`.
 - `room` (string): Name of the created room.
 - `channels` (array of strings): Sorted list of all active channel names configured in the room, including the auto-provisioned `"presence"` channel.
@@ -418,6 +487,7 @@ Confirms that the client has been admitted to the room.
 ```
 
 #### Fields
+
 - `type` (string): Fixed value `"room_joined"`.
 - `room` (string): Name of the joined room.
 - `channels` (array of strings): Sorted list of active channel names available in the room.
@@ -437,6 +507,7 @@ Confirms the client's departure from a room.
 ```
 
 #### Fields
+
 - `type` (string): Fixed value `"room_left"`.
 - `room` (string): Name of the room departed.
 
@@ -471,6 +542,7 @@ Returns active rooms in response to a `list_rooms` query.
 ```
 
 #### Fields
+
 - `rooms` (array of objects): List of room summaries.
   - `name` (string): Room identifier.
   - `members` (integer): Current member count.
@@ -503,6 +575,7 @@ The broadcast envelope forwarded to room subscribers.
 ```
 
 #### Envelope Fields and Semantics
+
 - `type` (string): Fixed value `"message"`.
 - `room` (string): Name of originating room.
 - `channel` (string): Name of originating channel (`"chat"`, `"state"`, `"presence"`, etc.).
@@ -532,6 +605,7 @@ Structured error response emitted when an action fails.
 ```
 
 #### Fields
+
 - `type` (string): Fixed value `"error"`.
 - `code` (string): Stable error code identifier (see table below).
 - `message` (string): Human-readable error description.
@@ -540,24 +614,25 @@ Structured error response emitted when an action fails.
 
 #### Complete Error Code Reference
 
-| Error Code | Trigger Condition | Connection Survives? |
-|---|---|---|
-| `UNAUTHORIZED` | Invalid or missing API key at HTTP upgrade. Rejected as HTTP 401. (Defined in protocol symbols; not emitted as a WebSocket frame). | No (Upgrade rejected) |
-| `FORBIDDEN_SCOPE` | Key lacks required scope (`room:create` or `room:join`). | Yes |
-| `BAD_REQUEST` | Malformed JSON, missing room, invalid name syntax, duplicate binary IDs, or binary ID 0. | Yes |
-| `ROOM_NOT_FOUND` | Specified room does not exist. | Yes |
-| `ROOM_ALREADY_EXISTS` | Attempted to create a room name that is already active. | Yes |
-| `ROOM_FULL` | Room capacity limit (`effective_max = min(requested_max, MAX_MEMBERS_PER_ROOM)`) has been reached. Message format: `room "<room>" is at capacity (<current>/<max>)`. | Yes |
-| `INVALID_PASSCODE` | Candidate passcode does not match bcrypt hash. | Yes |
-| `PASSCODE_RATE_LIMITED` | Too many failed passcode attempts within `PASSCODE_LOCKOUT_PERIOD`. | Yes |
-| `MAX_ROOMS_REACHED` | Hub reached the global `MAX_ROOMS` allocation threshold. | Yes |
-| `BINARY_NOT_ALLOWED` | Server has set `ALLOW_BINARY=false`. | Yes (Up to 4 strikes; closed on 5th strike) |
-| `CHANNEL_NOT_RELIABLE` | Client published with `reliable: true` on an unreliable-only channel. | Yes |
-| `CHANNEL_NOT_FOUND` | Specified channel does not exist in the target room. | Yes |
-| `RESERVED_CHANNEL_NAME` | Attempted to create or map `"presence"`, or use binary ID `255`. | Yes |
-| `CHANNEL_READ_ONLY` | Client attempted to publish JSON or binary message to `"presence"`. | Yes |
-| `RATE_LIMITED` | Token-bucket rate limit exceeded for the channel. | Yes (Unless violations exceed `MAX_RATE_VIOLATIONS_PER_MINUTE`) |
-| `INTERNAL_ERROR` | Internal server execution error. | Yes |
+| Error Code              | Trigger Condition                                                                                                                                                    | Connection Survives?                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `UNAUTHORIZED`          | Invalid or missing API key at HTTP upgrade. Rejected as HTTP 401. (Defined in protocol symbols; not emitted as a WebSocket frame).                                   | No (Upgrade rejected)                                           |
+| `FORBIDDEN_SCOPE`       | Key lacks required scope (`room:create` or `room:join`).                                                                                                             | Yes                                                             |
+| `NOT_ROOM_OWNER`        | Sender is not the room creator and lacks the `admin` scope when attempting `delete_room`.                                                                            | Yes                                                             |
+| `BAD_REQUEST`           | Malformed JSON, missing room, invalid name syntax, duplicate binary IDs, or binary ID 0.                                                                             | Yes                                                             |
+| `ROOM_NOT_FOUND`        | Specified room does not exist.                                                                                                                                       | Yes                                                             |
+| `ROOM_ALREADY_EXISTS`   | Attempted to create a room name that is already active.                                                                                                              | Yes                                                             |
+| `ROOM_FULL`             | Room capacity limit (`effective_max = min(requested_max, MAX_MEMBERS_PER_ROOM)`) has been reached. Message format: `room "<room>" is at capacity (<current>/<max>)`. | Yes                                                             |
+| `INVALID_PASSCODE`      | Candidate passcode does not match bcrypt hash.                                                                                                                       | Yes                                                             |
+| `PASSCODE_RATE_LIMITED` | Too many failed passcode attempts within `PASSCODE_LOCKOUT_PERIOD`.                                                                                                  | Yes                                                             |
+| `MAX_ROOMS_REACHED`     | Hub reached the global `MAX_ROOMS` allocation threshold.                                                                                                             | Yes                                                             |
+| `BINARY_NOT_ALLOWED`    | Server has set `ALLOW_BINARY=false`.                                                                                                                                 | Yes (Up to 4 strikes; closed on 5th strike)                     |
+| `CHANNEL_NOT_RELIABLE`  | Client published with `reliable: true` on an unreliable-only channel.                                                                                                | Yes                                                             |
+| `CHANNEL_NOT_FOUND`     | Specified channel does not exist in the target room.                                                                                                                 | Yes                                                             |
+| `RESERVED_CHANNEL_NAME` | Attempted to create or map `"presence"`, or use binary ID `255`.                                                                                                     | Yes                                                             |
+| `CHANNEL_READ_ONLY`     | Client attempted to publish JSON or binary message to `"presence"`.                                                                                                  | Yes                                                             |
+| `RATE_LIMITED`          | Token-bucket rate limit exceeded for the channel.                                                                                                                    | Yes (Unless violations exceed `MAX_RATE_VIOLATIONS_PER_MINUTE`) |
+| `INTERNAL_ERROR`        | Internal server execution error.                                                                                                                                     | Yes                                                             |
 
 ---
 
@@ -578,6 +653,7 @@ Replies to a client `{"type": "ping"}` frame.
 ### 5.1 Room and Channel Topology
 
 A room acts as an administrative boundary for members. Within a room, communication is split into distinct named **channels**. A channel dictates:
+
 1. **Delivery Guarantee**: Reliable (ordered, connection terminating on overflow) or Unreliable (lossy, drop-oldest).
 2. **Throughput Limit**: Per-connection token bucket rate limiting (`max_rate`).
 3. **Binary Identifier**: Optional 1-byte mapping for compact transmission.
@@ -588,15 +664,15 @@ Room members automatically subscribe to all channels configured in that room.
 
 When creating a room, specifying `kind` populates default channels, member limits, and lifecycle settings if omitted:
 
-| Setting / Channel | `"chat"` Preset | `"game"` Preset | `"custom"` Preset (Default) |
-|---|---|---|---|
-| **Default `max_members`** | `500` | `16` | `64` |
-| **Default `ephemeral`** | `false` | `true` | `true` |
-| **Channel `state`** | — | Unreliable, 60 msgs/s | — |
-| **Channel `chat`** | Reliable, 5 msgs/s | Reliable, 5 msgs/s | — |
-| **Channel `actions`** | — | Reliable, 20 msgs/s | — |
-| **Channel `default`** | — | — | Reliable, Unlimited (`max_rate: 0`) |
-| **Channel `presence`** | Reliable, Unlimited | Reliable, Unlimited | Reliable, Unlimited |
+| Setting / Channel         | `"chat"` Preset     | `"game"` Preset       | `"custom"` Preset (Default)         |
+| ------------------------- | ------------------- | --------------------- | ----------------------------------- |
+| **Default `max_members`** | `500`               | `16`                  | `64`                                |
+| **Default `ephemeral`**   | `false`             | `true`                | `true`                              |
+| **Channel `state`**       | —                   | Unreliable, 60 msgs/s | —                                   |
+| **Channel `chat`**        | Reliable, 5 msgs/s  | Reliable, 5 msgs/s    | —                                   |
+| **Channel `actions`**     | —                   | Reliable, 20 msgs/s   | —                                   |
+| **Channel `default`**     | —                   | —                     | Reliable, Unlimited (`max_rate: 0`) |
+| **Channel `presence`**    | Reliable, Unlimited | Reliable, Unlimited   | Reliable, Unlimited                 |
 
 `presence` is automatically provisioned for all room kinds.
 
@@ -643,11 +719,13 @@ Terminate connection                           Drop oldest message;
 ### 5.5 Rate Limiting and Disconnection Thresholds
 
 Rate limiting is enforced per-connection, per-channel using a token-bucket limiter (`golang.org/x/time/rate`):
+
 - **Rate**: `max_rate` tokens per second.
 - **Burst Capacity**: `max(2, max_rate * 2)`.
 - If `max_rate == 0`, rate limiting is disabled.
 
 When a client exceeds the available burst tokens:
+
 1. The message is dropped.
 2. The server responds with `RATE_LIMITED` (`retry_after_ms: 250`).
 3. The server records a violation timestamp in a sliding 1-minute window.
@@ -656,6 +734,7 @@ When a client exceeds the available burst tokens:
 ### 5.6 Binary Channel ID Negotiation
 
 Clients assign 1-byte identifiers to channels during `join_room` via `binary_channels`:
+
 - Valid range: `1` to `254`.
 - ID `0` is reserved for control frames.
 - ID `255` is reserved for presence.
@@ -670,6 +749,7 @@ The server manages room presence automatically on the reserved `"presence"` chan
 ### 6.1 Event Format and Triggers
 
 Presence events are delivered as standard `message` broadcast envelopes where:
+
 - `channel`: `"presence"`
 - `from`: `"server"`
 - `payload`: A JSON object matching:
@@ -682,22 +762,27 @@ Presence events are delivered as standard `message` broadcast envelopes where:
 ```
 
 Fields:
-- `event` (string): Either `"join"` or `"leave"`.
+
+- `event` (string): One of `"join"`, `"leave"`, or `"room_deleted"`.
 - `who` (string): The authenticated API key label of the client.
 
 #### Trigger Rules
+
 - `"join"`: Triggered when a client successfully executes `join_room`.
 - `"leave"`: Triggered when a client explicitly sends `leave_room`, abruptly terminates the socket, fails a ping heartbeat, or is evicted due to a reliable buffer overflow.
+- `"room_deleted"`: Triggered when an authorized client (creator or key with `"admin"` scope) executes `delete_room`. Unlike `join` and `leave`, `room_deleted` is broadcast to **all** current members of the room including the deleter (the one deliberate exception to the rule that senders do not receive their own events), providing the deleter with immediate confirmation and all members an orderly eviction signal prior to room destruction.
 
 ### 6.2 Timing Guarantees
 
 - **Join Order**: The server transmits `room_joined` to the joining client **before** broadcasting the `join` presence event to the rest of the room.
 - **Self-Exclusion**: A client never receives a `join` event for its own arrival. If a client joins an empty room (members <= 1), no presence event is emitted.
 - **Departure Processing**: When a socket disconnects, the server executes `LeaveAllRooms`, decrements room member counts, and emits a `"leave"` presence event to remaining peers before closing room resources.
+- **Room Deletion**: When a room is deleted, `room_deleted` is dispatched to all current members before their memberships are removed and the room resources are freed. No separate ack or per-member `leave` events are emitted.
 
 ### 6.3 Reconnection Behavior
 
 If a client abruptly disconnects and immediately rejoins:
+
 1. Peers observe a `leave` event when the original connection terminates.
 2. Peers observe a `join` event when the client establishes a new connection and calls `join_room`.
 3. Events are sequenced monotonically via the `seq` counter on the room's `"presence"` channel.
@@ -742,27 +827,27 @@ Binary frames provide zero-copy, compact payload transmission. The wire format i
 
 All settings are read from environment variables or an optional `.env` file at server startup.
 
-| Environment Variable | Default Value | Meaning | Required |
-|---|---|---|---|
-| `PORT` | `8080` | HTTP and WebSocket listening port. | Optional |
-| `ALLOWED_ORIGINS` | `*` | Comma-separated list of allowed WebSocket origin patterns. | Optional |
-| `PING_INTERVAL` | `30s` | Frequency of server-initiated ping heartbeats. | Optional |
-| `READ_TIMEOUT` | `60s` | Maximum wait time for client pong response to server ping heartbeats. When exceeded, the connection is closed with status 1008 (`StatusPolicyViolation`, "read timeout"). Must be greater than `PING_INTERVAL`. | Optional |
-| `WRITE_TIMEOUT` | `5s` | Context timeout for writing frames to the connection. | Optional |
-| `MAX_MESSAGE_BYTES` | `65536` | Maximum allowed payload size per frame (64 KiB). | Optional |
-| `MAX_ROOMS` | `1000` | Maximum number of active rooms allowed in memory. | Optional |
-| `MAX_MEMBERS_PER_ROOM` | `100` | Authoritative global cap ceiling on room capacity (`effective_max = min(requested_max, cfg.MaxMembersPerRoom)`). Set to `0` or negative for no global ceiling. | Optional |
-| `EPHEMERAL_ROOMS` | `""` (unset) | Optional global override for room lifecycle. Overrides kind preset defaults (`chat: false`, `game: true`, `custom: true`). If unset, preset defaults apply. Explicit `ephemeral` in `create_room` always takes highest precedence. | Optional |
-| `ALLOW_BINARY` | `true` | When `false`, rejects binary frames with `BINARY_NOT_ALLOWED`. | Optional |
-| `RELIABLE_QUEUE_SIZE` | `256` | Capacity of per-connection reliable outbound send queue. | Optional |
-| `UNRELIABLE_QUEUE_SIZE` | `16` | Capacity of per-connection unreliable outbound send queue. | Optional |
-| `MAX_RATE_VIOLATIONS_PER_MINUTE` | `60` | Maximum rate limit violations allowed per minute before disconnect. | Optional |
-| `PASSCODE_MAX_ATTEMPTS` | `5` | Maximum failed passcode attempts before temporary lockout. | Optional |
-| `PASSCODE_LOCKOUT_PERIOD` | `1m` | Lockout duration following repeated passcode failures. | Optional |
-| `API_KEYS_FILE` | `""` | Path to JSON file containing API keys and labels (e.g., `keys.json`). Preferred auth source. | Required if `API_KEYS` is unset |
-| `API_KEYS` | `""` | Comma-separated list of bare API keys (legacy auth source). Generates labels `env-key-1`, `env-key-2`, etc. | Required if `API_KEYS_FILE` is unset |
-| `SERVER_VERSION` | `1.0.0` | Version string emitted in `welcome` messages. | Optional |
-| `LOG_LEVEL` | `info` | Logging verbosity: `"debug"` or `"info"`. | Optional |
+| Environment Variable             | Default Value | Meaning                                                                                                                                                                                                                            | Required                             |
+| -------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `PORT`                           | `8080`        | HTTP and WebSocket listening port.                                                                                                                                                                                                 | Optional                             |
+| `ALLOWED_ORIGINS`                | `*`           | Comma-separated list of allowed WebSocket origin patterns.                                                                                                                                                                         | Optional                             |
+| `PING_INTERVAL`                  | `30s`         | Frequency of server-initiated ping heartbeats.                                                                                                                                                                                     | Optional                             |
+| `READ_TIMEOUT`                   | `60s`         | Maximum wait time for client pong response to server ping heartbeats. When exceeded, the connection is closed with status 1008 (`StatusPolicyViolation`, "read timeout"). Must be greater than `PING_INTERVAL`.                    | Optional                             |
+| `WRITE_TIMEOUT`                  | `5s`          | Context timeout for writing frames to the connection.                                                                                                                                                                              | Optional                             |
+| `MAX_MESSAGE_BYTES`              | `65536`       | Maximum allowed payload size per frame (64 KiB).                                                                                                                                                                                   | Optional                             |
+| `MAX_ROOMS`                      | `1000`        | Maximum number of active rooms allowed in memory.                                                                                                                                                                                  | Optional                             |
+| `MAX_MEMBERS_PER_ROOM`           | `100`         | Authoritative global cap ceiling on room capacity (`effective_max = min(requested_max, cfg.MaxMembersPerRoom)`). Set to `0` or negative for no global ceiling.                                                                     | Optional                             |
+| `EPHEMERAL_ROOMS`                | `""` (unset)  | Optional global override for room lifecycle. Overrides kind preset defaults (`chat: false`, `game: true`, `custom: true`). If unset, preset defaults apply. Explicit `ephemeral` in `create_room` always takes highest precedence. | Optional                             |
+| `ALLOW_BINARY`                   | `true`        | When `false`, rejects binary frames with `BINARY_NOT_ALLOWED`.                                                                                                                                                                     | Optional                             |
+| `RELIABLE_QUEUE_SIZE`            | `256`         | Capacity of per-connection reliable outbound send queue.                                                                                                                                                                           | Optional                             |
+| `UNRELIABLE_QUEUE_SIZE`          | `16`          | Capacity of per-connection unreliable outbound send queue.                                                                                                                                                                         | Optional                             |
+| `MAX_RATE_VIOLATIONS_PER_MINUTE` | `60`          | Maximum rate limit violations allowed per minute before disconnect.                                                                                                                                                                | Optional                             |
+| `PASSCODE_MAX_ATTEMPTS`          | `5`           | Maximum failed passcode attempts before temporary lockout.                                                                                                                                                                         | Optional                             |
+| `PASSCODE_LOCKOUT_PERIOD`        | `1m`          | Lockout duration following repeated passcode failures.                                                                                                                                                                             | Optional                             |
+| `API_KEYS_FILE`                  | `""`          | Path to JSON file containing API keys and labels (e.g., `keys.json`). Preferred auth source.                                                                                                                                       | Required if `API_KEYS` is unset      |
+| `API_KEYS`                       | `""`          | Comma-separated list of bare API keys (legacy auth source). Generates labels `env-key-1`, `env-key-2`, etc.                                                                                                                        | Required if `API_KEYS_FILE` is unset |
+| `SERVER_VERSION`                 | `1.0.0`       | Version string emitted in `welcome` messages.                                                                                                                                                                                      | Optional                             |
+| `LOG_LEVEL`                      | `info`        | Logging verbosity: `"debug"` or `"info"`.                                                                                                                                                                                          | Optional                             |
 
 ---
 
@@ -776,6 +861,7 @@ All settings are read from environment variables or an optional `.env` file at s
 ### 9.2 Graceful Shutdown
 
 Upon intercepting `SIGINT` (Ctrl+C) or `SIGTERM`:
+
 1. The server closes all active client WebSockets with status code `1001` (`StatusGoingAway`) and reason `"Server shutting down"`.
 2. As clients close, the hub processes room departure logic and emits `"leave"` presence events to remaining members.
 3. The HTTP server listener shuts down with a 10-second context deadline (`server.Shutdown`), allowing in-flight frames to drain.
@@ -783,6 +869,7 @@ Upon intercepting `SIGINT` (Ctrl+C) or `SIGTERM`:
 ### 9.3 Prometheus Telemetry
 
 Scraped via HTTP `GET /metrics`. Metric symbols:
+
 - `websocket_connected_clients`: Current active connections partitioned by label `key_label`.
 - `websocket_rooms_total`: Current count of active rooms in memory.
 - `websocket_messages_received_total`: Counter partitioned by frame type (`"json"`, `"binary"`).
