@@ -1,68 +1,75 @@
 @import 'tailwindcss';
 
-:root {
-	--bg: #eef1f5;
-	--surface: #ffffff;
-	--surface-2: #f7f8fa;
-	--border: #dfe3e9;
-	--text: #141922;
-	--muted: #6b7383;
-	--accent: #2563eb;
-	--accent-hover: #1d4ed8;
-	--accent-text: #ffffff;
-	--bubble-other: #ffffff;
-	--bubble-own: #2563eb;
-	--bubble-own-text: #ffffff;
-	--ok: #16a34a;
-	--warn: #d97706;
-	--danger: #dc2626;
-	--radius: 14px;
-	--shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
-}
-
-@media (prefers-color-scheme: dark) {
-	:root {
-		--bg: #0e1117;
-		--surface: #161b23;
-		--surface-2: #1c222c;
-		--border: #262d38;
-		--text: #e8ecf2;
-		--muted: #8b95a6;
-		--accent: #3b82f6;
-		--accent-hover: #60a5fa;
-		--bubble-other: #1e242e;
-		--bubble-own: #2563eb;
-		--shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-	}
-}
-
 @theme {
-	--color-bg: var(--bg);
-	--color-surface: var(--surface);
-	--color-surface-2: var(--surface-2);
-	--color-border: var(--border);
-	--color-text: var(--text);
-	--color-muted: var(--muted);
-	--color-accent: var(--accent);
-	--color-accent-hover: var(--accent-hover);
-	--color-accent-text: var(--accent-text);
-	--color-bubble-other: var(--bubble-other);
-	--color-bubble-own: var(--bubble-own);
-	--color-bubble-own-text: var(--bubble-own-text);
-	--color-ok: var(--ok);
-	--color-warn: var(--warn);
-	--color-danger: var(--danger);
+	--font-sans: 'Plus Jakarta Sans', sans-serif;
+	--color-midnight: #090d16;
+	--color-surface: #111827;
+	--color-surface-elevated: #161f30;
+	--color-surface-highlight: #1e293b;
+	--color-obsidian-950: #070a12;
+	--color-obsidian-900: #0b0f19;
+	--color-obsidian-850: #101726;
+	--color-obsidian-800: #151e2e;
+	--color-obsidian-700: #1e293b;
+	--color-emerald-bright: #34d399;
+	--color-emerald-dark: #059669;
+	--color-bg: #090d16;
+	--color-border: #1e293b;
+	--color-text: #f1f5f9;
+	--color-muted: #94a3b8;
+	--color-accent: #10b981;
+	--color-accent-hover: #34d399;
+	--color-accent-text: #020617;
+	--color-bubble-other: #151e2e;
+	--color-bubble-own: #059669;
+	--color-bubble-own-text: #ffffff;
+	--color-ok: #10b981;
+	--color-warn: #f59e0b;
+	--color-danger: #ef4444;
+}
+
+:root {
+	--bg: #090d16;
+	--surface: #111827;
+	--surface-2: #161f30;
+	--border: #1e293b;
+	--text: #f1f5f9;
+	--muted: #94a3b8;
+	--accent: #10b981;
+	--accent-hover: #34d399;
+	--accent-text: #020617;
+	--bubble-other: #151e2e;
+	--bubble-own: #059669;
+	--bubble-own-text: #ffffff;
+	--ok: #10b981;
+	--warn: #f59e0b;
+	--danger: #ef4444;
+	--radius: 14px;
 }
 
 html,
 body {
 	height: 100%;
 	margin: 0;
-	background-color: var(--bg);
-	color: var(--text);
+	background-color: #090d16;
+	color: #f1f5f9;
 	font-family:
-		-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+		'Plus Jakarta Sans',
+		-apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		Roboto,
+		sans-serif;
 	-webkit-font-smoothing: antialiased;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+
+.no-scrollbar {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
 }
 
 @keyframes pop {

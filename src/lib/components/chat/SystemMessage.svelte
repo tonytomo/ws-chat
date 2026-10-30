@@ -6,8 +6,10 @@
 	const { text }: Props = $props();
 </script>
 
-<div
-	class="my-1 max-w-[90%] self-center rounded-full border border-border bg-surface-2 px-3 py-1 text-center text-xs text-muted select-none"
->
-	{text}
+<div class="my-2 flex items-center justify-center">
+	<span
+		class="rounded-full border border-slate-800 bg-slate-900/90 px-4 py-1 text-xs font-semibold tracking-wide text-slate-400 shadow-sm select-none"
+	>
+		{text}
+	</span>
 </div>

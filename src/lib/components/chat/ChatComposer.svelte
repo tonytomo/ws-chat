@@ -1,12 +1,11 @@
 <script lang="ts">
-	import Button from '#lib/components/ui/Button.svelte';
-
 	interface Props {
 		isLocked: boolean;
+		roomName?: string;
 		onSend: (text: string) => void;
 	}
 
-	const { isLocked, onSend }: Props = $props();
+	const { isLocked, roomName = 'chat', onSend }: Props = $props();
 
 	let inputVal = $state('');
 	let inputEl: HTMLInputElement | null = $state(null);
@@ -27,21 +26,33 @@
 	}
 </script>
 
-<form
-	onsubmit={handleSubmit}
-	autocomplete="off"
-	class="flex shrink-0 items-center gap-2 border-t border-border bg-surface p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+<footer
+	class="sticky bottom-0 border-t border-slate-800/80 bg-[#0b0f19]/85 px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl backdrop-blur-xl sm:px-6"
 >
-	<input
-		bind:this={inputEl}
-		bind:value={inputVal}
-		type="text"
-		maxlength="2000"
-		placeholder="Message"
-		aria-label="Message"
-		disabled={isLocked}
-		class="min-w-0 flex-1 rounded-full border border-border bg-surface-2 px-4 py-2.5 text-sm text-text transition-all outline-none placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
-	/>
+	<div class="mx-auto max-w-4xl">
+		<form class="flex items-center gap-3" onsubmit={handleSubmit}>
+			<div class="relative flex-1">
+				<input
+					bind:this={inputEl}
+					bind:value={inputVal}
+					disabled={isLocked}
+					type="text"
+					maxlength="2000"
+					placeholder="Type your message in #{roomName}..."
+					aria-label="Message input"
+					class="w-full rounded-full border border-slate-800 bg-[#101726] py-3.5 pr-6 pl-5 text-base text-slate-100 shadow-inner transition-all outline-none placeholder:text-slate-500 focus:border-emerald-500 focus:bg-[#151e2e] focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+				/>
+			</div>
 
-	<Button variant="primary" type="submit" disabled={isLocked || !inputVal.trim()}>Send</Button>
-</form>
+			<button
+				type="submit"
+				title="Send message"
+				aria-label="Send message"
+				disabled={isLocked || !inputVal.trim()}
+				class="flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-emerald-400 font-bold text-slate-950 shadow-lg shadow-emerald-500/25 transition-all hover:scale-105 hover:from-emerald-500 hover:to-emerald-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+			>
+				<span class="material-symbols-outlined text-xl leading-none">send</span>
+			</button>
+		</form>
+	</div>
+</footer>

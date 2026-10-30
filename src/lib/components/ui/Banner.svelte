@@ -14,12 +14,12 @@
 		if (!banner) return '';
 		switch (banner.kind) {
 			case 'error':
-				return 'text-danger bg-danger/10 border-danger/35';
+				return 'text-red-300 bg-red-950/40 border-red-500/30';
 			case 'warn':
-				return 'text-warn bg-warn/15 border-warn/35';
+				return 'text-amber-300 bg-amber-950/40 border-amber-500/30';
 			case 'info':
 			default:
-				return 'text-accent bg-accent/10 border-accent/35';
+				return 'text-emerald-300 bg-emerald-950/40 border-emerald-500/30';
 		}
 	});
 </script>
@@ -27,7 +27,7 @@
 {#if banner}
 	<div
 		role="alert"
-		class="mx-4 my-2 flex items-center justify-between gap-3 rounded-xl border p-3 text-xs font-medium md:text-sm {kindClasses} {customClass}"
+		class="mx-4 my-2 flex items-center justify-between gap-3 rounded-2xl border p-3.5 text-xs font-medium shadow-lg shadow-black/20 backdrop-blur-md md:text-sm {kindClasses} {customClass}"
 	>
 		<div class="flex-1 wrap-break-word">
 			{banner.message}
@@ -38,7 +38,7 @@
 				<button
 					type="button"
 					onclick={onReconnect}
-					class="rounded-lg border border-current bg-transparent px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-80"
+					class="cursor-pointer rounded-xl border border-current bg-transparent px-3 py-1 text-xs font-semibold transition-opacity hover:opacity-80"
 				>
 					Reconnect
 				</button>
@@ -48,7 +48,7 @@
 				<button
 					type="button"
 					onclick={banner.onAction}
-					class="rounded-lg border border-current bg-transparent px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-80"
+					class="cursor-pointer rounded-xl border border-current bg-transparent px-3 py-1 text-xs font-semibold transition-opacity hover:opacity-80"
 				>
 					{banner.actionLabel}
 				</button>
@@ -59,7 +59,7 @@
 					type="button"
 					onclick={onDismiss}
 					aria-label="Dismiss banner"
-					class="rounded-lg border border-current/40 bg-transparent px-2 py-0.5 text-xs font-semibold transition-opacity hover:border-current hover:opacity-80"
+					class="cursor-pointer rounded-xl border border-current/40 bg-transparent px-2.5 py-1 text-xs font-semibold transition-opacity hover:border-current hover:opacity-80"
 				>
 					Dismiss
 				</button>

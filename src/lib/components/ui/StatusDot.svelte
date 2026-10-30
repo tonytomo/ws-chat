@@ -12,24 +12,24 @@
 	const dotColor = $derived.by(() => {
 		switch (status) {
 			case 'online':
-				return 'bg-ok';
+				return 'bg-emerald-400 shadow-[0_0_8px_#34d399]';
 			case 'error':
-				return 'bg-danger';
+				return 'bg-red-400 shadow-[0_0_8px_#f87171]';
 			case 'connecting':
 			default:
-				return 'bg-warn';
+				return 'bg-amber-400 shadow-[0_0_8px_#fbbf24]';
 		}
 	});
 
 	const textColor = $derived.by(() => {
 		switch (status) {
 			case 'online':
-				return 'text-ok';
+				return 'text-emerald-400';
 			case 'error':
-				return 'text-danger';
+				return 'text-red-400';
 			case 'connecting':
 			default:
-				return 'text-muted';
+				return 'text-slate-400';
 		}
 	});
 </script>

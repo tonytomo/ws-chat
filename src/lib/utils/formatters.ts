@@ -21,3 +21,20 @@ export function formatClockTime(unixSec?: number): string {
 	return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * Formats a Unix timestamp (seconds) into date header format: "Today, Month Day" or "Month Day".
+ */
+export function formatChatDate(unixSec?: number): string {
+	const date = unixSec ? new Date(unixSec * 1000) : new Date();
+	const today = new Date();
+	const isToday =
+		date.getDate() === today.getDate() &&
+		date.getMonth() === today.getMonth() &&
+		date.getFullYear() === today.getFullYear();
+	const monthName = date.toLocaleDateString('en-US', { month: 'long' });
+	const day = date.getDate();
+	if (isToday) {
+		return `Today, ${monthName} ${day}`;
+	}
+	return `${monthName} ${day}`;
+}

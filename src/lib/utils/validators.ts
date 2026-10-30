@@ -44,4 +44,3 @@ export const KIND_PRESETS: Record<RoomKind, KindPresetInfo> = {
 export function getDefaultEphemeralForKind(kind: RoomKind): boolean {
 	return KIND_PRESETS[kind]?.defaultEphemeral ?? true;
 }
-

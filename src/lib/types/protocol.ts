@@ -158,4 +158,3 @@ export interface BannerState {
 	actionLabel?: string;
 	onAction?: () => void;
 }
-

@@ -16,6 +16,8 @@
 	<title>Game Chat</title>
 </svelte:head>
 
-<div class="min-h-dvh bg-bg text-text">
+<div
+	class="min-h-dvh bg-[#090d16] font-sans text-slate-100 antialiased selection:bg-emerald-500 selection:text-black"
+>
 	{@render children()}
 </div>
