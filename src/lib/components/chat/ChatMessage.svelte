@@ -21,7 +21,7 @@
 	{/if}
 
 	<div
-		class="overflow-hidden rounded-2xl px-3.5 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap shadow-xs {message.own
+		class="overflow-hidden rounded-2xl px-3.5 py-2 text-sm leading-relaxed wrap-break-word whitespace-pre-wrap shadow-xs {message.own
 			? 'rounded-br-xs bg-bubble-own text-bubble-own-text'
 			: 'rounded-bl-xs border border-border bg-bubble-other text-text'}"
 	>

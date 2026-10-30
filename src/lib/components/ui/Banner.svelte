@@ -29,7 +29,7 @@
 		role="alert"
 		class="mx-4 my-2 flex items-center justify-between gap-3 rounded-xl border p-3 text-xs font-medium md:text-sm {kindClasses} {customClass}"
 	>
-		<div class="flex-1 break-words">
+		<div class="flex-1 wrap-break-word">
 			{banner.message}
 		</div>
 

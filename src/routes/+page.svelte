@@ -100,7 +100,7 @@
 			<h1 class="text-lg font-bold tracking-tight text-text">Lobby</h1>
 			{#if lobbyStore.selfLabel}
 				<span
-					class="max-w-[140px] truncate rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-xs font-semibold text-muted"
+					class="max-w-35 truncate rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-xs font-semibold text-muted"
 				>
 					{lobbyStore.selfLabel}
 				</span>
